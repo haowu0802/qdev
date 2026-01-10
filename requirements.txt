@@ -1,0 +1,11 @@
+# Core dependencies for qdev cointegration analysis
+pandas>=2.0.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+statsmodels>=0.14.0
+tiingo>=0.14.0
+python-dotenv>=1.0.0
+
+# Optional: for type checking during development
+# mypy>=1.5.0
+# types-python-dotenv>=1.0.0
