@@ -189,7 +189,7 @@ Issues and Pull Requests are welcome!
 
 ## Changelog
 
-### v1.0.0 (2024)
+### v1.0.0 (2026)
 - ✅ Fixed syntax errors
 - ✅ Added type hints
 - ✅ Improved error handling and logging system
