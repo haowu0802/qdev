@@ -28,6 +28,7 @@ setup(
     long_description_content_type="text/markdown",
     author="haowu0802",
     url="https://github.com/haowu0802/qdev",
+    license="MIT",
     py_modules=["check_cointegration"],
     install_requires=requirements,
     python_requires=">=3.8",
