@@ -356,6 +356,11 @@ Examples:
     return parser.parse_args()
 
 
-if __name__ == "__main__":
+def cli_main() -> None:
+    """Command-line entry point for the package."""
     args = parse_arguments()
     main(args)
+
+
+if __name__ == "__main__":
+    cli_main()

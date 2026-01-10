@@ -16,11 +16,17 @@ A Python library for analyzing cointegration relationships between financial ass
 ### 1. Clone Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/haowu0802/qdev.git
 cd qdev
 ```
 
-### 2. Install Dependencies
+### 2. Install Package and Dependencies
+
+```bash
+pip install .
+```
+
+Alternatively, if you only want to install dependencies without installing the package:
 
 ```bash
 pip install -r requirements.txt
