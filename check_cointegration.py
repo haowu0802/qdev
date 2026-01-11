@@ -15,6 +15,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
+from statsmodels.tsa.stattools import adfuller
 from tiingo import TiingoClient
 from dotenv import load_dotenv
 
@@ -140,6 +141,127 @@ def calculate_hedge_ratio(
     
     return beta, alpha, model
 
+def calculate_half_life(spread: pd.Series) -> float:
+    """
+    Calculates the Half-Life of mean reversion using Ornstein-Uhlenbeck process.
+    
+    Formula: dx(t) = -theta * (x(t) - mu) * dt + sigma * dW
+    Half-Life = log(2) / theta
+    
+    Args:
+        spread: The spread series (Y - Beta*X - Alpha).
+        
+    Returns:
+        float: Expected days for the spread to revert halfway to the mean.
+              Returns np.inf if not mean reverting (theta <= 0).
+    """
+    spread_lag = spread.shift(1)
+    spread_ret = spread - spread_lag
+    spread_ret = spread_ret.dropna()
+    spread_lag = spread_lag.dropna()
+    
+    if len(spread_ret) < 2:
+        return np.inf
+    
+    # Regress spread_ret on spread_lag
+    x_with_const = sm.add_constant(spread_lag)
+    model = sm.OLS(spread_ret, x_with_const).fit()
+    theta = -model.params.iloc[1]
+    
+    if theta <= 0:
+        return np.inf  # Not mean reverting
+        
+    return np.log(2) / theta
+
+def perform_adf_test(spread: pd.Series) -> Tuple[float, float, bool]:
+    """
+    Performs Augmented Dickey-Fuller test for stationarity.
+    
+    Args:
+        spread: The spread series to test for stationarity.
+        
+    Returns:
+        Tuple of (adf_stat, p_value, is_stationary) where:
+        - adf_stat: ADF test statistic
+        - p_value: P-value of the test
+        - is_stationary: True if the series is stationary at 5% confidence level
+    """
+    result = adfuller(spread)
+    adf_stat = result[0]
+    p_value = result[1]
+    # Critical value at 5% confidence level
+    crit_val_5 = result[4]['5%']
+    
+    is_stationary = p_value < 0.05 and adf_stat < crit_val_5
+    return adf_stat, p_value, is_stationary
+
+def generate_scorecard(
+    asset_a: str, 
+    asset_b: str, 
+    spread: pd.Series, 
+    beta: float,
+    r_squared: float
+) -> None:
+    """
+    Generates and logs a trading scorecard based on statistical metrics.
+    
+    This function evaluates the tradability of a pair trading strategy by:
+    1. Testing for cointegration (stationarity) using ADF test
+    2. Assessing correlation strength via R-squared
+    3. Calculating mean reversion speed via half-life
+    
+    Args:
+        asset_a: Name of first asset (independent variable).
+        asset_b: Name of second asset (dependent variable).
+        spread: The spread series (Y - Beta*X - Alpha).
+        beta: Hedge ratio (slope coefficient).
+        r_squared: R-squared value from regression.
+    """
+    # 1. Calculate Metrics
+    adf_stat, p_value, is_stationary = perform_adf_test(spread)
+    half_life = calculate_half_life(spread)
+    
+    # 2. Determine Tradability
+    # Criteria: Stationary AND R-Squared > 0.5 AND Half-Life < 60 days
+    is_tradable = is_stationary and (r_squared > 0.5) and (half_life < 60)
+    
+    # 3. Log Scorecard
+    logger.info("\n" + "="*50)
+    logger.info(f"TRADING SCORECARD: {asset_a} / {asset_b}")
+    logger.info("="*50)
+    
+    logger.info(f"1. Cointegration (ADF Test):")
+    logger.info(f"   ADF Statistic: {adf_stat:.4f}")
+    logger.info(f"   P-Value:       {p_value:.5f}  (Target: < 0.05)")
+    logger.info(f"   Status:        {'[PASS] Stationary' if is_stationary else '[FAIL] Random Walk'}")
+    
+    logger.info(f"\n2. Correlation Strength:")
+    logger.info(f"   R-Squared:     {r_squared:.4f}   (Target: > 0.8)")
+    logger.info(f"   Beta:          {beta:.4f}")
+    
+    logger.info(f"\n3. Reversion Speed:")
+    if half_life == np.inf:
+        logger.info(f"   Half-Life:     ∞ Days (Not mean reverting)")
+    else:
+        logger.info(f"   Half-Life:     {half_life:.1f} Days (Target: < 20 Days)")
+    
+    logger.info("-" * 50)
+    if is_tradable:
+        logger.info(f"CONCLUSION: ✅ TRADABLE CANDIDATE")
+        logger.info(f"   Action: Watch for Z-Score triggers.")
+    else:
+        reasons = []
+        if not is_stationary:
+            reasons.append("High P-Value (Not Stationary)")
+        if r_squared <= 0.5:
+            reasons.append("Low Correlation")
+        if half_life >= 60:
+            reasons.append("Slow Reversion")
+        reason_str = " or ".join(reasons) if reasons else "Unknown"
+        logger.info(f"CONCLUSION: ❌ AVOID / RISKY")
+        logger.info(f"   Reason: {reason_str}")
+    logger.info("="*50 + "\n")
+
 def preview_dataset(df: pd.DataFrame) -> None:
     """
     Inspects the DataFrame structure, boundaries, and statistics.
@@ -191,7 +313,9 @@ def visualize_relationship(
     asset_b: str, 
     beta: float, 
     alpha: float,
-    save_path: Optional[str] = None
+    save_path: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
 ) -> None:
     """
     Creates comprehensive visualizations of the asset relationship.
@@ -207,8 +331,19 @@ def visualize_relationship(
         beta: Hedge ratio (slope).
         alpha: Intercept term.
         save_path: Optional path to save the figure. If None, displays interactively.
+        start_date: Optional start date string for display in title.
+        end_date: Optional end date string for display in title.
     """
     logger.info("Generating visualization...")
+    
+    # Create date range string for title
+    date_range_str = ""
+    if start_date and end_date:
+        date_range_str = f" ({start_date} to {end_date})"
+    elif start_date:
+        date_range_str = f" (from {start_date})"
+    elif end_date:
+        date_range_str = f" (until {end_date})"
     
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
 
@@ -219,7 +354,7 @@ def visualize_relationship(
     
     normalized_a.plot(ax=ax1, label=asset_a, linewidth=1.5)
     normalized_b.plot(ax=ax1, label=asset_b, linewidth=1.5)
-    ax1.set_title(f"Normalized Price Performance: {asset_a} vs {asset_b}", fontsize=14)
+    ax1.set_title(f"Normalized Price Performance: {asset_a} vs {asset_b}{date_range_str}", fontsize=14)
     ax1.set_xlabel("Date")
     ax1.set_ylabel("Normalized Price (Base = 1.0)")
     ax1.legend()
@@ -254,21 +389,19 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
     Main execution function for cointegration analysis.
     
     Args:
-        args: Optional command-line arguments. If None, uses default values.
+        args: Optional command-line arguments. If None, parses arguments from command line.
     """
-    # Parse arguments or use defaults
+    # Parse arguments or use provided args
     if args is None:
-        asset_a = 'GLD'  # Gold ETF
-        asset_b = 'GDX'  # Gold Miners ETF
-        start_date = '2020-01-01'
-        end_date = '2023-12-30'
-        save_plot = None
-    else:
-        asset_a = args.asset_a
-        asset_b = args.asset_b
-        start_date = args.start_date
-        end_date = args.end_date
-        save_plot = args.save_plot
+        args = parse_arguments()
+    
+    asset_a = args.asset_a
+    asset_b = args.asset_b
+    start_date = args.start_date
+    end_date = args.end_date
+    save_plot = args.save_plot
+
+    logger.info(f"Analysis parameters: {asset_a} vs {asset_b}, Date range: {start_date} to {end_date}")
 
     try:
         # 1. Data Ingestion
@@ -292,8 +425,22 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
         logger.info(f"  The relationship explains {model.rsquared*100:.2f}% of variance.")
         logger.info("="*50)
 
-        # 4. Visualize
-        visualize_relationship(df, asset_a, asset_b, beta, alpha, save_plot)
+        # 4. Construct Spread (The Synthetic Asset)
+        # Spread = Y - (Beta * X) - Alpha
+        spread = df[asset_b] - (beta * df[asset_a]) - alpha
+        spread.name = "Spread"
+        
+        logger.info(f"\nSpread Statistics:")
+        logger.info(f"  Mean:   {spread.mean():.4f}")
+        logger.info(f"  Std:    {spread.std():.4f}")
+        logger.info(f"  Min:    {spread.min():.4f}")
+        logger.info(f"  Max:    {spread.max():.4f}")
+
+        # 5. Generate Scorecard (New Feature)
+        generate_scorecard(asset_a, asset_b, spread, beta, model.rsquared)
+
+        # 6. Visualize
+        visualize_relationship(df, asset_a, asset_b, beta, alpha, save_plot, start_date, end_date)
         
     except Exception as e:
         logger.error(f"Analysis failed: {e}", exc_info=True)
