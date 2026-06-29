@@ -1,11 +1,18 @@
-# Core dependencies for qdev cointegration analysis
+# Core dependencies for qdev market forecast evaluation pipeline
 pandas>=2.0.0
 numpy>=1.24.0
 matplotlib>=3.7.0
 statsmodels>=0.14.0
-tiingo>=0.14.0
-python-dotenv>=1.0.0
 
-# Optional: for type checking during development
-# mypy>=1.5.0
-# types-python-dotenv>=1.0.0
+# Data ingestion (primary source: yfinance, no API key required)
+yfinance>=0.2.40
+
+# Warehouse (local analytics engine)
+duckdb>=1.0.0
+
+# Optional: dbt transformations (added in P0 day 2-3)
+# dbt-duckdb>=1.8.0
+
+# Optional alternative data source (requires TIINGO_API_KEY in .env)
+# tiingo>=0.14.0
+# python-dotenv>=1.0.0
