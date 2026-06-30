@@ -1,0 +1,9 @@
+# Local profile — run dbt with:  dbt <cmd> --profiles-dir .
+# Points at the DuckDB file written by ingest (warehouse/qdev.duckdb).
+qdev:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "../warehouse/qdev.duckdb"
+      schema: main

@@ -10,8 +10,8 @@ yfinance>=0.2.40
 # Warehouse (local analytics engine)
 duckdb>=1.0.0
 
-# Optional: dbt transformations (added in P0 day 2-3)
-# dbt-duckdb>=1.8.0
+# Transformations (dbt-duckdb)
+dbt-duckdb>=1.8.0
 
 # Optional alternative data source (requires TIINGO_API_KEY in .env)
 # tiingo>=0.14.0

@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: stg_prices
+    description: Staged daily OHLCV prices; one row per ticker per trading day per source.
+    columns:
+      - name: ticker
+        description: Market ticker symbol (e.g. SPY, GLD).
+        tests:
+          - not_null
+      - name: date
+        description: Trading date.
+        tests:
+          - not_null
+      - name: adj_close
+        description: Dividend/split-adjusted closing price.
+        tests:
+          - not_null
+      - name: source
+        description: Data provider that supplied this row (e.g. yfinance).
+        tests:
+          - not_null
